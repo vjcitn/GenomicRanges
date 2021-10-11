@@ -1,0 +1,380 @@
+---
+title: "Things (maybe) you didn't know about GenomicRanges, Biostrings, and Rsamtools (Bioc 2016)"
+author: "Herve Pages"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteIndexEntry{4. Ten things (maybe) you didn't know about GenomicRanges, Biostrings, and Rsamtools}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    highlight: pygments
+    number_sections: yes
+    theme: united
+    toc: yes
+---
+
+```{r setup, results="hide", echo=FALSE}
+options(width=80)
+library(GenomicRanges)
+library(Biostrings)
+library(Rsamtools)
+library(BSgenome)
+library(hgu95av2probe)
+
+example(GRangesList)
+
+gr <- GRanges(Rle(c("chr2", "chr2", "chr1", "chr3"), c(1, 3, 2, 4)),
+              IRanges(1:10, width=10:1, names=head(letters, 10)),
+              Rle(strand(c("-", "+", "*", "+", "-")), c(1, 2, 2, 3, 2)),
+              score=1:10, GC=seq(1, 0, length=10))
+
+ir <- IRanges(c(11:13, 2, 7:6), width=3)
+mcols(ir) <- DataFrame(id=letters[1:6], score=3:-2)
+
+x <- GRanges(c("chr1:1-1000", "chr2:2000-3000"),
+             score=c(0.45, 0.1), a1=c(5L, 7L), a2=c(6, 8))
+mcols(x)$score[2] <- NA
+y <- GRanges(c("chr2:150-151", "chr1:1-10", "chr2:2000-3000"),
+             score=c(0.7, 0.82, 0.1), b1=c(0L, 5L, 1L), b2=c(1, -2, 1))
+```
+
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# Inner vs outer metadata columns
+   
+{\small
+```{r inner_outer_mcols}
+mcols(grl)$id <- paste0("ID", seq_along(grl))
+grl
+```
+}
+   
+ 
+
+
+   
+{\small
+```{r inner_outer_mcols2}
+mcols(grl)  # outer mcols
+mcols(unlist(grl, use.names=FALSE))  # inner mcols
+```
+}
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# invertStrand()
+  Works out-of-the-box on any object that has a strand() getter and setter
+  ==> no need to implement specific methods.
+   
+{\small
+```{r }
+gr
+```
+}
+   
+
+
+   
+{\small
+```{r }
+invertStrand(gr)
+```
+}
+   
+ 
+
+
+   
+{\small
+```{r }
+grl
+```
+}
+   
+ 
+
+
+   
+{\small
+```{r }
+invertStrand(grl)
+```
+}
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# extractList()
+
+  Extract groups of elements from a vector-like object and return them in
+  a list-like object.
+   
+```{r }
+cvg <- Rle(c(0L, 2L, 5L, 1L, 0L), c(10, 6, 3, 4, 15))
+cvg
+i <- IRanges(c(16, 19, 9), width=5, names=letters[1:3])
+i
+```
+   
+ 
+
+
+   
+```{r }
+extractList(cvg, i)
+```
+   
+ 
+
+
+   
+  \Rcode{i} can be an IntegerList object:
+{\small
+```{r }
+i <- IntegerList(c(25:20), NULL, seq(from=2, to=length(cvg), by=2))
+i
+extractList(cvg, i)
+```
+}
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# 'with.revmap' arg for reduce() and (now) disjoin()
+   
+```{r }
+ir
+ir2 <- reduce(ir, with.revmap=TRUE)
+ir2
+```
+   
+ 
+
+
+   
+{\small
+```{r }
+revmap <- mcols(ir2)$revmap
+extractList(mcols(ir)$id, revmap)
+extractList(mcols(ir)$score, revmap)
+mcols(ir2) <- DataFrame(id=extractList(mcols(ir)$id, revmap),
+                        score=extractList(mcols(ir)$score, revmap))
+ir2
+```
+}
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# Zero-width ranges
+
+  \Rcode{findOverlaps}/\Rcode{countOverlaps} support zero-width ranges.
+   
+{\small
+```{r }
+sliding_query <- IRanges(1:6, width=0)
+sliding_query
+countOverlaps(sliding_query, IRanges(3, 4))
+```
+}
+   
+  But you have to specify \Rcode{minoverlap=0} for this to work (default is 1).
+   
+{\small
+```{r }
+countOverlaps(sliding_query, IRanges(3, 4), minoverlap=0)
+```
+}
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# Biostrings::replaceAt()
+
+  Perform multiple substitutions at arbitrary positions in a set of
+  sequences.
+   
+```{r }
+library(Biostrings)
+library(hgu95av2probe)
+probes <- DNAStringSet(hgu95av2probe)
+probes
+```
+   
+ 
+
+
+  Replace 3rd and 4th nucleotides by pattern \Rcode{-++-}.
+   
+```{r }
+replaceAt(probes, at=IRanges(3, 4), value="-++-")
+```
+   
+ 
+
+
+  If supplied pattern is empty, then performs deletions.
+   
+```{r }
+replaceAt(probes, at=IRanges(3, 4), value="")
+```
+   
+ 
+
+
+  If \Rcode{at} is a zero-with range, then performs insertions.
+   
+```{r }
+replaceAt(probes, at=IRanges(4, 3), value="-++-")
+```
+   
+ 
+
+
+  Use it in combination with \Rcode{vmatchPattern} to replace all the
+  occurences of a given pattern with another pattern:
+   
+```{r }
+midx <- vmatchPattern("VCGTT", probes, fixed=FALSE)
+replaceAt(probes, at=midx, value="-++-")
+```
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# GRanges as a subscript
+   
+{\small
+```{r GRanges_as_a_subscript_1}
+cvg <- RleList(chr1=101:120, chr2=2:-8, chr3=31:40)
+gr
+```
+}
+   
+ 
+
+
+   
+{\scriptsize
+```{r GRanges_as_a_subscript_2}
+cvg[gr]
+```
+}
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# BSgenomeViews objects
+   
+```{r }
+library(BSgenome.Mmusculus.UCSC.mm10)
+genome <- BSgenome.Mmusculus.UCSC.mm10
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+ex <- exons(txdb, columns=c("exon_id", "tx_name", "gene_id"))
+v <- Views(genome, ex)
+```
+   
+ 
+
+
+   
+{\scriptsize
+```{r }
+v
+```
+}
+   
+ 
+
+
+   
+```{r }
+af <- alphabetFrequency(v, baseOnly=TRUE)
+head(af)
+```
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+# Pile-up statistics on a BAM file with Rsamtools::pileup()
+   
+```{r }
+library(Rsamtools)
+library(RNAseqData.HNRNPC.bam.chr14)
+fl <- RNAseqData.HNRNPC.bam.chr14_BAMFILES[1]
+sbp <- ScanBamParam(which=GRanges("chr14", IRanges(1, 53674770)))
+pp <- PileupParam(distinguish_nucleotides=FALSE,
+                  distinguish_strands=FALSE,
+                  min_mapq=13,
+                  min_base_quality=10,
+                  min_nucleotide_depth=4)
+res <- pileup(fl, scanBamParam=sbp, pileupParam=pp)
+```
+   
+ 
+
+   
+```{r }
+dim(res)
+head(res)
+```
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+
+
+#. Merging 2 GRanges objects (added this week)
+   
+{\small
+```{r }
+x
+y
+```
+}
+   
+ 
+
+
+   
+{\small
+```{r }
+merge(x, y)
+```
+}
+   
+ 
+
+
+   
+{\small
+```{r }
+merge(x, y, all=TRUE)
+```
+}
+   
+ 
+
+<!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% -->
+

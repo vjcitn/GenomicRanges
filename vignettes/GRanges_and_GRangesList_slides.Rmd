@@ -1,0 +1,851 @@
+---
+title: "A quick introduction to GRanges and GRangesList objects (July 2015)"
+author: "Herve Pages, Mike Lawrence"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteIndexEntry{A quick introduction to GRanges and GRangesList objects}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    highlight: pygments
+    number_sections: yes
+    theme: united
+    toc: yes
+---
+
+
+```{r setup,echo=FALSE, results="hide"}
+options(width=84)
+plotRanges <- function(x, xlim = x, main = deparse(substitute(x)),
+                       col = "black", sep = 0.5, ...)
+{
+  height <- 1
+  if (is(xlim, "IntegerRanges"))
+    xlim <- c(min(start(xlim)), max(end(xlim)))
+  bins <- disjointBins(IRanges(start(x), end(x) + 1))
+  plot.new()
+  par(mai=c(0.5, 0.2, 1.2, 0.2))
+  plot.window(xlim, c(0, max(bins)*(height + sep)))
+  ybottom <- bins * (sep + height) - height
+  rect(start(x)-0.5, ybottom, end(x)+0.5, ybottom + height, col = col, ...)
+  title(main, cex.main=2.8, font.main=1)
+  axis(1)
+}
+```
+
+
+
+# GRanges objects
+
+## The GRanges class is a container for...
+
+  ... storing a set of {genomic ranges} (a.k.a. {genomic regions}
+  or {genomic intervals}).
+
+-  Each genomic range is described by a chromosome name,
+            a {start}, an {end}, and a strand.
+-  {start} and {end} are both {\bf 1-based} positions
+            relative to the 5' end of the plus strand of the chromosome,
+            even when the range is on the minus strand.
+-  {start} and {end} are both considered to be included
+            in the interval (except when the range is empty).
+-  The {width} of the range is the number of genomic positions
+            included in it. So {width} = {end} - {start} + 1.
+-  {end} is always >= {start}, except for empty ranges
+            (a.k.a. zero-width ranges) where {end} = {start} - 1.
+
+    Note that the {start} is always the leftmost position and the
+    {end} the rightmost, even when the range is on the minus strand.
+ 
+    Gotcha: A TSS is at the {end} of the range associated with a
+    transcript located on the minus strand.
+
+
+
+
+
+
+## The `GRanges()` constructor
+  
+
+```{r GRanges_constructor}
+library(GenomicRanges)
+gr1 <- GRanges(seqnames=Rle(c("ch1", "chMT"), c(2, 4)),
+               ranges=IRanges(16:21, 20),
+               strand=rep(c("+", "-", "*"), 2))
+gr1
+```
+
+  
+
+
+
+
+
+
+## GRanges accessors: `length()`, `seqnames()`, `ranges()`
+
+  
+
+```{r GRanges_accessors1}
+length(gr1)
+seqnames(gr1)
+ranges(gr1)
+```
+
+  
+
+
+
+## GRanges accessors: `start()`, `end()`, `width()`, `strand()`
+
+  
+
+```{r GRanges_accessors2}
+start(gr1)
+end(gr1)
+width(gr1)
+strand(gr1)
+strand(gr1) <- c("-", "-", "+")
+strand(gr1)
+```
+
+  
+
+
+
+## GRanges accessors: `names()`
+
+  
+```{r GRanges_accessors3}
+names(gr1) <- LETTERS[1:6]
+gr1
+names(gr1)
+```
+  
+
+
+
+## GRanges accessors: `mcols()`
+
+  Like with most \Bioconductor{} vector-like objects, {metadata columns}
+  can be added to a GRanges object:
+  
+```{r GRanges_accessors4}
+mcols(gr1) <- DataFrame(score=11:16, GC=seq(1, 0, length=6))
+gr1
+mcols(gr1)
+```
+
+  
+
+
+
+## GRanges accessors: `seqinfo()`, `seqlevels()`, `seqlengths()`
+
+  
+```{r GRanges_accessors5}
+seqinfo(gr1)
+seqlevels(gr1)
+seqlengths(gr1)
+seqlengths(gr1) <- c(50000, 800)
+seqlengths(gr1)
+```
+  
+
+
+# Vector operations on GRanges objects
+
+
+What we call _vector operations_ are operations that work on any
+ordinary vector:
+
+
+- `length()`, `names()`
+- Single-bracket subsetting: `[`
+- Combining: `c()`
+- `split()`, `relist()`
+- Comparing: `==`, `!=`, `match()`, `\%in\%`, `duplicated()`, `unique()`
+- Ordering: `<=`, `>=`, `<`, `>`,
+                      `order()`, `sort()`, `rank()`
+
+
+    GRanges objects support all these {vector operations}
+    $==>$ They're considered {vector-like} objects.
+
+
+
+
+## Vector operations on GRanges objects: Single-bracket subsetting
+
+  
+```{r GRanges_Vector_ops1}
+gr1[c("F", "A")]
+gr1[strand(gr1) == "+"]
+```
+  
+
+
+
+## Vector operations on GRanges objects: Single-bracket subsetting
+  
+{\small
+```{r GRanges_Vector_ops2}
+gr1 <- gr1[-5]
+gr1
+```
+
+  
+
+
+
+## Vector operations on GRanges objects: Combining
+
+  
+```{r GRanges_Vector_ops3}
+gr2 <- GRanges(seqnames="ch2",
+               ranges=IRanges(start=c(2:1,2), width=6),
+               score=15:13,
+               GC=seq(0, 0.4, length=3))
+gr12 <- c(gr1, gr2)
+gr12
+```
+  
+
+
+
+## Vector operations on GRanges objects: Comparing
+  
+```{r GRanges_Vector_ops4}
+gr12[length(gr12)] == gr12
+duplicated(gr12)
+unique(gr12)
+```
+  
+
+
+
+## Vector operations on GRanges objects: Ordering
+  
+```{r GRanges_sort}
+sort(gr12)
+```
+  
+
+
+
+## Splitting a GRanges object
+  
+```{r GRanges_split}
+split(gr12, seqnames(gr12))
+```
+  
+
+
+
+## Exercise 1
+  
+- Load the GenomicRanges package.
+- Open the man page for the GRanges class and run the examples in it.
+- Extract from GRanges object `gr` the elements (i.e.  ranges) with a score between 4 and 8.
+- Split `gr` by strand.
+
+
+
+
+# Range-based operations on GRanges objects
+
+
+## An overview of range-based operations
+
+
+
+
+### Intra range transformations
+
+        `shift()`, `narrow()`, `resize()`, `flank()`
+
+### Inter range transformations
+
+        `range()`, `reduce()`, `gaps()`, `disjoin()`
+
+### Range-based set operations
+
+        `union()`, `intersect()`, `setdiff()`,
+        `punion()`, `pintersect()`, `psetdiff()`,
+        `pgap()`
+
+
+
+
+### Coverage and slicing
+
+        `coverage()`, `slice()`
+      
+### Finding/counting overlapping ranges
+
+        `findOverlaps()`, `countOverlaps()`
+      
+### Finding the nearest range neighbor
+
+        `nearest()`, `precede()`, `follow()`
+        
+
+## Examples of some common range-based operations
+  
+```{r ranges-ir0-plot}
+library(IRanges)
+ir0 <- IRanges(start=c(7, 9, 12, 14, 22:24),
+               end=c(15, 11, 12, 18, 26, 27, 28))
+
+plotRanges(ir0, xlim=c(5, 35), main="ir0", col="blue")
+```
+```{r ranges-shift-ir0-plot}
+plotRanges(shift(ir0, 5), xlim=c(5, 35), main="shift(ir0, 5)", col="blue")
+```
+```{r ranges-reduce-ir0-plot}
+plotRanges(reduce(ir0), xlim=c(5, 35), main="reduce(ir0)", col="blue")
+```
+```{r ranges-disjoin-ir0-plot}
+plotRanges(disjoin(ir0), xlim=c(5, 35), main="disjoin(ir0)", col="blue")
+```
+  
+
+
+
+## Range-based operations on GRanges objects
+  
+```{r GRanges_range_based_ops1}
+gr2
+shift(gr2, 50)
+```
+  
+
+
+
+  
+```{r GRanges_range_based_ops2}
+gr1
+resize(gr1, 12)
+```
+  
+
+
+
+  
+```{r GRanges_range_based_ops3}
+gr1
+flank(gr1, 3)
+```
+  
+
+
+
+  
+```{r GRanges_range_based_ops4}
+gr3 <- shift(gr1, c(35000, rep(0, 3), 100))
+width(gr3)[c(3,5)] <- 117
+gr3
+range(gr3)
+```
+  
+
+
+
+  
+```{r GRanges_reduce}
+gr3
+reduce(gr3)
+```
+  
+
+
+
+  
+```{r GRanges_gaps}
+gr3
+gaps(gr3)
+```
+  
+
+
+
+  
+```{r GRanges_disjoin}
+gr3
+disjoin(gr3)
+```
+  
+
+
+
+## Exercise 2
+
+  Using GRanges object `gr` created at Exercise 1:
+  
+- Shift the ranges in `gr` by 1000 positions to the right.
+- What method is called when doing `shift()` on a
+          GRanges object? Find the man page for this method.
+
+
+
+# Coverage
+  
+```{r GRanges_coverage1}
+cvg12 <- coverage(gr12)
+cvg12
+```
+  
+
+
+
+  
+
+```{r GRanges_coverage2}
+mean(cvg12)
+max(cvg12)
+```
+
+  
+
+
+
+## Slicing the coverage
+  
+
+```{r slice_coverage}
+sl12 <- slice(cvg12, lower=1)
+sl12
+elementNROWS(sl12)
+sl12$chMT
+mean(sl12$chMT)
+max(sl12$chMT)
+```
+
+  
+
+
+
+## findOverlaps()
+
+  Load aligned reads from a BAM file:
+  
+```{r findOverlaps1}
+library(pasillaBamSubset)
+untreated1_chr4()
+library(GenomicAlignments)
+reads <- readGAlignments(untreated1_chr4())
+```
+  
+
+ 
+  and store them in a GRanges object:
+
+  
+
+```{r findOverlaps2}
+reads <- as(reads, "GRanges")
+reads[1:4]
+```
+
+  
+
+
+
+## findOverlaps() (continued)
+
+
+  Load the gene ranges from a {TxDb} package: 
+
+  
+
+```{r findOverlaps3}
+library(TxDb.Dmelanogaster.UCSC.dm3.ensGene)
+txdb <- TxDb.Dmelanogaster.UCSC.dm3.ensGene
+dm3_genes <- genes(txdb)
+```
+
+  
+
+  and find the overlaps between the reads and the genes:
+  
+
+```{r findOverlaps4}
+hits <- findOverlaps(reads, dm3_genes)
+head(hits)
+```
+
+  
+
+
+
+## Exercise 3
+
+- Recreate GRanges objects `reads` and
+          `dm3\_genes` from previous slides.
+- What method is called when calling `findOverlaps()` on
+          them? Open the man page for this method.
+- Find the overlaps between the 2 objects but this time the strand
+          should be ignored.
+
+
+
+## Exercise 4
+  In this exercise we want to get the exon sequences for the dm3 genome.
+  
+- Extract the exon ranges from `txdb`.
+- Load the BSgenome.Dmelanogaster.UCSC.dm3 package.
+- Use `getSeq()` to extract the exon sequences from the `BSgenome` object in BSgenome.Dmelanogaster.UCSC.dm3.
+
+
+
+
+
+# GRangesList objects
+
+
+
+
+
+## The GRangesList class is a container for storing a list of compatible GRanges objects.
+
+    {compatible} means:
+
+- they are relative to the same genome,
+- AND they have the same metadata columns (accessible with
+            the `mcols()` accessor).
+
+
+
+
+
+
+
+## The `GRangesList()` constructor
+  
+```{r GRangesList_constructor}
+grl <- GRangesList(gr3, gr2)
+grl
+```
+  
+
+
+
+
+
+
+## GRangesList accessors
+  
+```{r GRangesList_accessors1}
+length(grl)
+```
+  
+  \begin{columns}[t]
+    \begin{column}{0.44\textwidth}
+      
+```{r GRangesList_accessors2}
+seqnames(grl)
+```
+      
+    \end{column}
+    \begin{column}{0.44\textwidth}
+      
+```{r GRangesList_accessors3}
+strand(grl)
+```
+      
+    \end{column}
+  \end{columns}
+
+
+
+  \begin{columns}[t]
+    \begin{column}{0.44\textwidth}
+      
+```{r GRangesList_accessors4}
+ranges(grl)
+```
+      
+    \end{column}
+    \begin{column}{0.44\textwidth}
+      
+```{r GRangesList_accessors5}
+start(grl)
+end(grl)
+width(grl)
+```
+      
+    \end{column}
+  \end{columns}
+
+
+
+  
+```{r GRangesList_accessors6}
+names(grl) <- c("TX1", "TX2")
+grl
+```
+  
+
+
+
+  
+```{r GRangesList_accessors7}
+mcols(grl)$geneid <- c("GENE1", "GENE2") 
+mcols(grl)
+grl
+```
+  
+
+
+
+  
+```{r GRangesList_accessors8}
+seqinfo(grl)
+```
+  
+
+
+
+
+
+
+## Vector operations on GRangesList objects
+ 
+  Only the following vector operations are supported on
+  GRangesList objects:
+
+- `length()`, `names()`
+- Single-bracket subsetting: `[`
+- Combining: `c()`
+
+  
+```{r GRangesList_Vector_ops1}
+grl[c("TX2", "TX1")]
+```
+  
+
+
+
+  
+```{r GRangesList_Vector_ops2}
+c(grl, GRangesList(gr3))
+```
+  
+
+
+
+
+
+
+## List operations on GRangesList objects
+
+What we call _list operations_ are operations that work on an ordinary list:
+
+- Double-bracket subsetting: `[[`
+- `elementNROWS()`, `unlist()`
+- `lapply()`, `sapply()`, `endoapply()`
+- `mendoapply()` (not covered in this presentation)
+
+    GRangesList objects support all these {list operations}
+    $==>$ They're considered {list-like} objects.
+
+
+
+
+## elementNROWS() and unlist()
+  
+```{r GRangesList_List_ops1}
+grl[[2]]
+elementNROWS(grl)
+unlisted <- unlist(grl, use.names=FALSE)  # same as c(grl[[1]], grl[[2]])
+unlisted
+```
+  
+
+
+
+## relist()
+  
+```{r GRangesList_List_ops2}
+grl100 <- relist(shift(unlisted, 100), grl)
+grl100
+```
+  
+
+
+
+## endoapply()
+  
+```{r GRangesList_List_ops3}
+grl100b <- endoapply(grl, shift, 100)
+grl100b
+mcols(grl100)
+mcols(grl100b)
+```
+  
+
+
+
+## Range-based operations on GRangesList objects
+
+
+      
+
+```{r GRangesList_range_based_ops1}
+grl
+```
+
+      
+
+
+      
+
+```{r GRangesList_range_based_ops2}
+shift(grl, 100)
+```
+
+      
+
+
+
+    `shift(grl, 100)` is equivalent to `endoapply(grl, shift, 100)`
+
+
+
+
+
+
+      
+
+```{r GRangesList_range_based_ops3}
+grl
+```
+
+      
+
+
+      
+
+```{r GRangesList_range_based_ops4}
+flank(grl, 10)
+```
+
+      
+
+
+
+    `flank(grl, 10)` is equivalent to `endoapply(grl, flank, 10)`
+
+
+
+
+
+
+      
+
+```{r GRangesList_range_based_ops5}
+grl
+```
+
+      
+
+
+      
+
+```{r GRangesList_range_based_ops6}
+range(grl) 
+```
+
+      
+
+
+
+    `range(grl)` is equivalent to `endoapply(grl, range)`
+
+
+
+
+
+
+      
+
+```{r GRangesList_range_based_ops7}
+grl
+```
+
+      
+
+
+      
+
+```{r GRangesList_range_based_ops8}
+reduce(grl) 
+```
+
+      
+
+
+
+    `reduce(grl)` is equivalent to `endoapply(grl, reduce)`
+
+
+
+
+
+```{r GRangesList_range_based_ops9,results="hide",echo=FALSE}
+grl2 <- grl
+grl2[[1]] <- grl2[[1]][3]; grl2[[2]] <- grl2[[2]][1]
+grl3 <- unname(grl2)
+grl3[[1]] <- narrow(unname(grl3[[1]]), start=5, end=-5)
+```
+
+
+      
+
+```{r GRangesList_range_based_ops10}
+grl2
+grl3
+```
+
+      
+
+
+      
+
+```{r GRangesList_range_based_ops11}
+setdiff(grl2, grl3)
+```
+
+      
+
+
+
+    `setdiff(grl2, grl)` is equivalent to
+    `mendoapply(setdiff, grl2, grl)`
+
+
+## Other resources
+
+- [Great slides from Michael on ranges sequences and alignments:](http://bioconductor.org/help/course-materials/2014/CSAMA2014/2_Tuesday/lectures/Ranges_Sequences_and_Alignments-Lawrence.pdf)
+
+- Vignettes in the GenomicRanges package `browseVignettes("GenomicRanges")`.
+
+- GRanges and GRangesList man pages in the GenomicRanges package.
+
+- Vignettes and GAlignments man page in the GenomicAlignments package.
+
+- [Bioconductor support site](http://support.bioconductor.org/)
+
+- The {genomic ranges} paper:
+        Michael Lawrence, Wolfgang Huber, Herv\'e Pag\`es, Patrick Aboyoun,
+        Marc Carlson, Robert Gentleman, Martin T. Morgan, Vincent J. Carey.
+        Software for Computing and Annotating Genomic Ranges.
+        {PLOS Computational Biology}, 4(3), 2013.
+
+
+
+
+
+
