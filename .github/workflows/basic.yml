@@ -57,6 +57,8 @@ jobs:
         run: (cat DESCRIPTION)
       - name: get dependencies
         run: (Rscript -e "BiocManager::install(basename(getwd()), ref='RELEASE_3_20', dependencies=TRUE, update=FALSE, Ncpus=2)")
+      - name: more pkgs
+        run: (Rscript -e "BiocManager::install(c('TxDb.Hsapiens.UCSC.hg38.knownGene', 'VariantAnnotation', 'pasillaBamSubset', 'Biostrings'), type='source')")
       - name: look at pkgs
         run: (Rscript -e 'print(sort(rownames(installed.packages())))')
       - name: do r cmd check
